@@ -7,6 +7,17 @@ export const maxDuration = 60;
 const BASE = process.env.OCS_BASE_URL;
 const TOKEN = process.env.OCS_TOKEN;
 
+// Optional: scope to a reseller via env or query ?resellerId=123
+function getResellerId(req) {
+  const url = new URL(req.url);
+  const q = url.searchParams.get("resellerId");
+  if (q && /^\d+$/.test(q)) return Number(q);
+  if (process.env.OCS_RESELLER_ID && /^\d+$/.test(process.env.OCS_RESELLER_ID)) {
+    return Number(process.env.OCS_RESELLER_ID);
+  }
+  return undefined;
+}
+
 async function callOCS(body) {
   if (!BASE || !TOKEN) throw new Error("Missing OCS env");
   const r = await fetch(`${BASE}?token=${encodeURIComponent(TOKEN)}`, {
@@ -32,19 +43,33 @@ function normalize(arr) {
 
 export async function GET(req) {
   try {
-    // Try multiple likely ops; some tenants expose different names
-    const attempts = [
-      { body: { listAccount: {} }, pick: r => r?.listAccount?.accounts },
-      { body: { listAccounts: {} }, pick: r => r?.listAccounts?.accounts },
-      { body: { listResellerAccounts: {} }, pick: r => r?.listResellerAccounts?.accounts },
-      { body: { listCustomerAccounts: {} }, pick: r => r?.listCustomerAccounts?.accounts }
+    const resellerId = getResellerId(req);
+
+    // 1) Per your guide: try listResellerAccount (singular) first
+    //    If resellerId is provided, include it; otherwise call without to list all.
+    const primaryBodies = [
+      resellerId ? { listResellerAccount: { resellerId } } : { listResellerAccount: {} },
+    ];
+
+    // 2) Fallbacks for different tenants
+    const fallbackBodies = [
+      { listAccount: {} },
+      { listAccounts: {} },
+      { listResellerAccounts: {} },
+      { listCustomerAccounts: {} }
     ];
 
     let accounts = [];
-    for (const t of attempts) {
+    for (const body of [...primaryBodies, ...fallbackBodies]) {
       try {
-        const resp = await callOCS(t.body);
-        const arr = t.pick(resp);
+        const resp = await callOCS(body);
+        const arr =
+          resp?.listResellerAccount?.accounts ??
+          resp?.listAccount?.accounts ??
+          resp?.listAccounts?.accounts ??
+          resp?.listResellerAccounts?.accounts ??
+          resp?.listCustomerAccounts?.accounts ??
+          [];
         if (Array.isArray(arr) && arr.length) {
           accounts = normalize(arr);
           break;
@@ -52,7 +77,7 @@ export async function GET(req) {
       } catch (_) {}
     }
 
-    // Fallback: if still empty, try to infer from listSubscriber of the default account
+    // 3) Ultimate fallback: show the default env account (so UI still works)
     if (accounts.length === 0 && process.env.OCS_ACCOUNT_ID) {
       try {
         const ls = await callOCS({ listSubscriber: { accountId: Number(process.env.OCS_ACCOUNT_ID) } });
