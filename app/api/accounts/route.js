@@ -7,7 +7,6 @@ export const maxDuration = 60;
 const BASE = process.env.OCS_BASE_URL;
 const TOKEN = process.env.OCS_TOKEN;
 
-// Optional: scope to a reseller via env or query ?resellerId=123
 function getResellerId(req) {
   const url = new URL(req.url);
   const q = url.searchParams.get("resellerId");
@@ -32,56 +31,67 @@ async function callOCS(body) {
   return json ?? {};
 }
 
-function normalize(arr) {
-  return (arr || [])
-    .map(a => ({
-      id: a?.accountId ?? a?.id ?? null,
-      name: a?.accountName ?? a?.name ?? (a?.label ?? (a?.id ? `Account ${a.id}` : null))
-    }))
-    .filter(a => a.id && a.name);
+function flattenResellerAccounts(resp) {
+  // Expected shape:
+  // resp.listResellerAccount.reseller[] -> { id, name, account: [{ id, name, ... }, ...] }
+  const resellers = resp?.listResellerAccount?.reseller;
+  if (!Array.isArray(resellers)) return [];
+  const out = [];
+  for (const r of resellers) {
+    const accounts = Array.isArray(r?.account) ? r.account : [];
+    for (const a of accounts) {
+      const id = a?.id ?? a?.accountId;
+      const name = a?.name ?? a?.accountName ?? (id ? `Account ${id}` : null);
+      if (id && name) out.push({ id, name, resellerId: r?.id ?? null, resellerName: r?.name ?? null });
+    }
+  }
+  return out;
 }
 
 export async function GET(req) {
   try {
     const resellerId = getResellerId(req);
 
-    // Per guide: try listResellerAccount (singular) first
-    const primaryBodies = [
-      resellerId ? { listResellerAccount: { resellerId } } : { listResellerAccount: {} }
-    ];
+    // 1) Per guide: listResellerAccount (all or specific reseller)
+    const primary = resellerId
+      ? await callOCS({ listResellerAccount: { resellerId } })
+      : await callOCS({ listResellerAccount: {} });
 
-    // Fallbacks for different tenants
-    const fallbackBodies = [
-      { listAccount: {} },
-      { listAccounts: {} },
-      { listResellerAccounts: {} },
-      { listCustomerAccounts: {} }
-    ];
+    let accounts = flattenResellerAccounts(primary);
 
-    let accounts = [];
-    for (const body of [...primaryBodies, ...fallbackBodies]) {
-      try {
-        const resp = await callOCS(body);
-        const arr =
-          resp?.listResellerAccount?.accounts ??
-          resp?.listAccount?.accounts ??
-          resp?.listAccounts?.accounts ??
-          resp?.listResellerAccounts?.accounts ??
-          resp?.listCustomerAccounts?.accounts ?? [];
-        if (Array.isArray(arr) && arr.length) {
-          accounts = normalize(arr);
-          break;
-        }
-      } catch {}
+    // 2) Fallbacks for tenants exposing different shapes
+    if (accounts.length === 0) {
+      const tries = [
+        { body: { listAccount: {} }, pick: r => r?.listAccount?.accounts },
+        { body: { listAccounts: {} }, pick: r => r?.listAccounts?.accounts },
+        { body: { listResellerAccounts: {} }, pick: r => r?.listResellerAccounts?.accounts },
+        { body: { listCustomerAccounts: {} }, pick: r => r?.listCustomerAccounts?.accounts }
+      ];
+      for (const t of tries) {
+        try {
+          const r = await callOCS(t.body);
+          const arr = t.pick(r);
+          if (Array.isArray(arr) && arr.length) {
+            accounts = arr
+              .map(a => ({
+                id: a?.accountId ?? a?.id,
+                name: a?.accountName ?? a?.name ?? (a?.id ? `Account ${a.id}` : null)
+              }))
+              .filter(a => a.id && a.name);
+            break;
+          }
+        } catch {}
+      }
     }
 
-    // Ultimate fallback: default env account (so UI still works)
+    // 3) Ultimate fallback so UI still works
     if (accounts.length === 0 && process.env.OCS_ACCOUNT_ID) {
       try {
-        const ls = await callOCS({ listSubscriber: { accountId: Number(process.env.OCS_ACCOUNT_ID) } });
+        const accId = Number(process.env.OCS_ACCOUNT_ID);
+        const ls = await callOCS({ listSubscriber: { accountId: accId } });
         const subs = ls?.listSubscriber?.subscriberList || [];
-        const name = subs?.[0]?.account || `Account ${process.env.OCS_ACCOUNT_ID}`;
-        accounts = [{ id: Number(process.env.OCS_ACCOUNT_ID), name }];
+        const name = subs?.[0]?.account || `Account ${accId}`;
+        accounts = [{ id: accId, name }];
       } catch {}
     }
 
