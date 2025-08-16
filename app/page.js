@@ -11,9 +11,19 @@ async function safeFetch(url) {
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}${txt ? " :: " + txt.slice(0,300) : ""}`);
   return json ?? {};
 }
+
+// small utils
 const bytesToGB = (b) => (b == null || isNaN(b)) ? "" : (Number(b) / (1024 ** 3)).toFixed(2);
 const money = (n) => (n == null || isNaN(n)) ? "" : Number(n).toFixed(2);
 const fmtDT = (s) => typeof s === "string" ? s.replace("T", " ") : s ?? "";
+
+// columns
+const columns = [
+  "ICCID","IMSI","phoneNumber","subscriberStatus","simStatus","esim","activationCode",
+  "activationDate","lastUsageDate","prepaid","balance","account","reseller","lastMcc","lastMnc",
+  "prepaidpackagetemplatename","prepaidpackagetemplateid","tsactivationutc","tsexpirationutc","pckdatabyte","useddatabyte","pckdata(GB)","used(GB)",
+  "subscriberOneTimeCost","usageSinceJun1(GB)","resellerCostSinceJun1"
+];
 
 export default function Page() {
   const [accountId, setAccountId] = useState("3771");
@@ -21,28 +31,26 @@ export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [accounts, setAccounts] = useState([]);
+  const [accountSearch, setAccountSearch] = useState("");
 
-  // Columns (includes one-time Subscriber Cost from package; totals keep reseller only)
-  const columns = [
-    "ICCID","IMSI","phoneNumber","subscriberStatus","simStatus","esim","activationCode",
-    "activationDate","lastUsageDate","prepaid","balance","account","reseller","lastMcc","lastMnc",
-    "prepaidpackagetemplatename","prepaidpackagetemplateid","tsactivationutc","tsexpirationutc","pckdatabyte","useddatabyte","pckdata(GB)","used(GB)",
-    "subscriberOneTimeCost","usageSinceJun1(GB)","resellerCostSinceJun1"
-  ];
-  const colW = 170;
-  const minW = columns.length * colW;
+  // logo source (local / public/logo.png preferred; URL fallback via env)
+  const logoSrc = process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png";
 
-  const filtered = useMemo(() => {
-    const n = q.trim().toLowerCase();
-    if (!n) return rows;
-    return rows.filter(r => Object.values(r).some(v => String(v ?? "").toLowerCase().includes(n)));
-  }, [rows, q]);
+  // fetch accounts for tab view
+  useEffect(() => {
+    fetch("/api/accounts").then(r=>r.text()).then(t=>{
+      let j=null; try{ j=t?JSON.parse(t):null; }catch{}
+      if (j?.ok && Array.isArray(j.data)) setAccounts(j.data);
+    }).catch(()=>{});
+  }, []);
 
+  // fetch data for current account
   async function load() {
     setErr(""); setLoading(true);
     try {
       const url = new URL("/api/fetch-data", window.location.origin);
-      if (accountId) url.searchParams.set("accountId", accountId.trim());
+      if (accountId) url.searchParams.set("accountId", String(accountId).trim());
       const payload = await safeFetch(url.toString());
       if (payload?.ok === false) throw new Error(payload.error || "API error");
       setRows(Array.isArray(payload?.data) ? payload.data : []);
@@ -53,9 +61,27 @@ export default function Page() {
       setLoading(false);
     }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* auto-load on first mount */ }, []);
 
-  // Export helpers
+  // search filter
+  const filtered = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    if (!n) return rows;
+    return rows.filter(r => Object.values(r).some(v => String(v ?? "").toLowerCase().includes(n)));
+  }, [rows, q]);
+
+  // top totals for this account (sum across subscribers)
+  const totals = useMemo(() => {
+    let totalReseller = 0;
+    let totalSubscriberOneTime = 0;
+    for (const r of rows) {
+      if (Number.isFinite(r?.resellerCostSinceJun1)) totalReseller += Number(r.resellerCostSinceJun1);
+      if (Number.isFinite(r?.subscriberOneTimeCost)) totalSubscriberOneTime += Number(r.subscriberOneTimeCost);
+    }
+    return { totalReseller, totalSubscriberOneTime };
+  }, [rows]);
+
+  // exports
   function exportCSV() {
     const headers = [...columns];
     const lines = [headers.join(",")];
@@ -70,16 +96,11 @@ export default function Page() {
       ].map(x => `"${String(x).replace(/"/g, '""')}"`).join(","));
     });
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const a = document.createElement("a");
+    a.href = url; a.download = `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
   function exportExcel() {
-    // build a flat array of objects for XLSX
     const data = filtered.map(r => ({
       ICCID: r.iccid ?? "",
       IMSI: r.imsi ?? "",
@@ -114,34 +135,85 @@ export default function Page() {
     XLSX.writeFile(wb, `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
-  const Header = ({children}) => (
-    <div style={{ padding:"10px 12px", background:"#eaf6c9", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" }}>{children}</div>
-  );
-  const Cell = ({children, i}) => (
-    <div style={{
-      padding:"10px 12px",
-      borderBottom:"1px solid #cbd5a7",
-      background: i%2? "#ffffff":"#f6fadf",
-      wordBreak:"break-all",
-      color:"#000"
-    }}>{children}</div>
-  );
+  // styles
+  const colW = 170;
+  const minW = columns.length * colW;
+  const headerBox = { padding:"10px 12px", background:"#eaf6c9", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" };
+  const cellBox = (i) => ({
+    padding:"10px 12px",
+    borderBottom:"1px solid #cbd5a7",
+    background: i%2? "#ffffff":"#f6fadf",
+    wordBreak:"break-all",
+    color:"#000"
+  });
 
   return (
     <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
-      {/* Centered logo (place your image at /public/logo.png) */}
+      {/* centered logo */}
       <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
-        <img src="/logo.png" alt="Teltrip" style={{ height: 64 }} />
+        <img src={logoSrc} alt="Teltrip" style={{ height: 64 }} />
       </div>
 
-      <header style={{ display:"grid", gridTemplateColumns:"auto auto auto 1fr 360px", gap:12, alignItems:"center", marginBottom:14 }}>
+      {/* account tabs + search */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"center", marginBottom:10 }}>
+        <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
+          {accounts
+            .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
+            .map(a => (
+              <button
+                key={a.id}
+                onClick={()=>{ setAccountId(String(a.id)); setTimeout(load, 0); }}
+                title={String(a.id)}
+                style={{
+                  padding:"6px 10px",
+                  borderRadius:10,
+                  border:"1px solid #cbd5a7",
+                  background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
+                  color:"#000",
+                  whiteSpace:"nowrap",
+                  cursor:"pointer"
+                }}
+              >
+                {a.name} — {a.id}
+              </button>
+            ))}
+        </div>
+        <input
+          placeholder="Search accounts…"
+          value={accountSearch}
+          onChange={e=>setAccountSearch(e.target.value)}
+          style={{ padding:"8px 10px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", minWidth:220 }}
+        />
+      </div>
+
+      {/* top controls + totals for selected account */}
+      <header style={{ display:"grid", gridTemplateColumns:"auto auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
         <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
+
         <input
           value={accountId}
           onChange={e=>setAccountId(e.target.value)}
           placeholder="Account ID"
           style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}
         />
+
+        {/* totals */}
+        <div style={{
+          justifySelf:"start",
+          display:"flex",
+          gap:12,
+          alignItems:"center",
+          background:"#fff",
+          border:"1px solid #cbd5a7",
+          borderRadius:10,
+          padding:"8px 12px",
+          color:"#000"
+        }}>
+          <div><b>Total Reseller Cost:</b> {money(totals.totalReseller)}</div>
+          <div>|</div>
+          <div><b>Total Subscriber Cost:</b> {money(totals.totalSubscriberOneTime)}</div>
+        </div>
+
         <button
           onClick={load}
           disabled={loading}
@@ -149,14 +221,15 @@ export default function Page() {
         >
           {loading ? "Loading…" : "Load"}
         </button>
-        <div />
+
+        <button
+          onClick={exportCSV}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
+        >
+          Export CSV
+        </button>
+
         <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
-          <button
-            onClick={exportCSV}
-            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
-          >
-            Export CSV
-          </button>
           <button
             onClick={exportExcel}
             style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}
@@ -166,62 +239,55 @@ export default function Page() {
           <input
             value={q}
             onChange={e=>setQ(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search rows…"
             style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:260 }}
           />
         </div>
       </header>
 
-      {err && (
-        <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>
-          {err}
-        </div>
-      )}
-
+      {/* data table */}
       <div style={{ overflowX:"auto", border:"1px solid #cbd5a7", borderRadius:14 }}>
-        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, ${colW}px)`, gap:8, minWidth:minW, fontSize:13 }}>
-          {columns.map((h) => <Header key={h}>{h}</Header>)}
-
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, 170px)`, gap:8, minWidth:columns.length*170, fontSize:13 }}>
+          {columns.map(h=>(
+            <div key={h} style={headerBox}>{h}</div>
+          ))}
           {filtered.map((r, i) => (
             <>
-              {/* core */}
-              <Cell i={i}>{r.iccid ?? ""}</Cell>
-              <Cell i={i}>{r.imsi ?? ""}</Cell>
-              <Cell i={i}>{r.phoneNumber ?? ""}</Cell>
-              <Cell i={i}>{r.subscriberStatus ?? ""}</Cell>
-              <Cell i={i}>{r.simStatus ?? ""}</Cell>
-              <Cell i={i}>{String(r.esim ?? "")}</Cell>
-              <Cell i={i}>{r.activationCode ?? ""}</Cell>
-              <Cell i={i}>{fmtDT(r.activationDate)}</Cell>
-              <Cell i={i}>{fmtDT(r.lastUsageDate)}</Cell>
-              <Cell i={i}>{String(r.prepaid ?? "")}</Cell>
-              <Cell i={i}>{r.balance ?? ""}</Cell>
-              <Cell i={i}>{r.account ?? ""}</Cell>
-              <Cell i={i}>{r.reseller ?? ""}</Cell>
-              <Cell i={i}>{r.lastMcc ?? ""}</Cell>
-              <Cell i={i}>{r.lastMnc ?? ""}</Cell>
+              <div style={cellBox(i)}>{r.iccid ?? ""}</div>
+              <div style={cellBox(i)}>{r.imsi ?? ""}</div>
+              <div style={cellBox(i)}>{r.phoneNumber ?? ""}</div>
+              <div style={cellBox(i)}>{r.subscriberStatus ?? ""}</div>
+              <div style={cellBox(i)}>{r.simStatus ?? ""}</div>
+              <div style={cellBox(i)}>{String(r.esim ?? "")}</div>
+              <div style={cellBox(i)}>{r.activationCode ?? ""}</div>
+              <div style={cellBox(i)}>{fmtDT(r.activationDate)}</div>
+              <div style={cellBox(i)}>{fmtDT(r.lastUsageDate)}</div>
+              <div style={cellBox(i)}>{String(r.prepaid ?? "")}</div>
+              <div style={cellBox(i)}>{r.balance ?? ""}</div>
+              <div style={cellBox(i)}>{r.account ?? ""}</div>
+              <div style={cellBox(i)}>{r.reseller ?? ""}</div>
+              <div style={cellBox(i)}>{r.lastMcc ?? ""}</div>
+              <div style={cellBox(i)}>{r.lastMnc ?? ""}</div>
 
-              {/* package */}
-              <Cell i={i}>{r.prepaidpackagetemplatename ?? ""}</Cell>
-              <Cell i={i}>{r.prepaidpackagetemplateid ?? ""}</Cell>
-              <Cell i={i}>{fmtDT(r.tsactivationutc)}</Cell>
-              <Cell i={i}>{fmtDT(r.tsexpirationutc)}</Cell>
-              <Cell i={i}>{r.pckdatabyte ?? ""}</Cell>
-              <Cell i={i}>{r.useddatabyte ?? ""}</Cell>
-              <Cell i={i}>{bytesToGB(r.pckdatabyte)}</Cell>
-              <Cell i={i}>{bytesToGB(r.useddatabyte)}</Cell>
+              <div style={cellBox(i)}>{r.prepaidpackagetemplatename ?? ""}</div>
+              <div style={cellBox(i)}>{r.prepaidpackagetemplateid ?? ""}</div>
+              <div style={cellBox(i)}>{fmtDT(r.tsactivationutc)}</div>
+              <div style={cellBox(i)}>{fmtDT(r.tsexpirationutc)}</div>
+              <div style={cellBox(i)}>{r.pckdatabyte ?? ""}</div>
+              <div style={cellBox(i)}>{r.useddatabyte ?? ""}</div>
+              <div style={cellBox(i)}>{bytesToGB(r.pckdatabyte)}</div>
+              <div style={cellBox(i)}>{bytesToGB(r.useddatabyte)}</div>
 
-              {/* costs/usage */}
-              <Cell i={i}>{money(r.subscriberOneTimeCost)}</Cell>
-              <Cell i={i}>{bytesToGB(r.totalBytesSinceJun1)}</Cell>
-              <Cell i={i}>{money(r.resellerCostSinceJun1)}</Cell>
+              <div style={cellBox(i)}>{money(r.subscriberOneTimeCost)}</div>
+              <div style={cellBox(i)}>{bytesToGB(r.totalBytesSinceJun1)}</div>
+              <div style={cellBox(i)}>{money(r.resellerCostSinceJun1)}</div>
             </>
           ))}
         </div>
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
-        Light theme, centered logo. Export to CSV/Excel. Usage & reseller cost aggregated from <b>2025-06-01</b> to today.
+        Tabs = Accounts (Name — ID) from OCS. Totals reflect the currently selected account.
       </p>
     </main>
   );
