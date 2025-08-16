@@ -1,3 +1,4 @@
+export const maxDuration = 960;  // allow longer processing on Vercel
 import { NextResponse } from "next/server";
 import { fetchAllData } from "../../../lib/teltrip";
 
