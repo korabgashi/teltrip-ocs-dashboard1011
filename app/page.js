@@ -1,6 +1,8 @@
 "use client";
+
 import { useEffect, useMemo, useState } from "react";
 
+// safe fetch
 async function safeFetch(url) {
   const res = await fetch(url, { cache: "no-store" });
   const txt = await res.text();
@@ -10,6 +12,7 @@ async function safeFetch(url) {
 }
 const bytesToGB = (b) => (b == null || isNaN(b)) ? "" : (Number(b) / (1024 ** 3)).toFixed(2);
 const money = (n) => (n == null || isNaN(n)) ? "" : Number(n).toFixed(2);
+const fmtDT = (s) => typeof s === "string" ? s.replace("T", " ") : s ?? "";
 
 export default function Page() {
   const [accountId, setAccountId] = useState("3771");
@@ -18,14 +21,14 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  // Columns (includes your new totals + resellerCost + no “T” in displayed dates)
   const columns = [
     "ICCID","IMSI","phoneNumber","subscriberStatus","simStatus","esim","activationCode",
     "activationDate","lastUsageDate","prepaid","balance","account","reseller","lastMcc","lastMnc",
     "prepaidpackagetemplatename","prepaidpackagetemplateid","tsactivationutc","tsexpirationutc","pckdatabyte","useddatabyte","pckdata(GB)","used(GB)",
-    "W1(GB)","W2(GB)","W3(GB)","W4(GB)",
-    "W1 subscriberCost","W2 subscriberCost","W3 subscriberCost","W4 subscriberCost"
+    "usageSinceJun1(GB)","subscriberCostSinceJun1","resellerCostSinceJun1"
   ];
-  const colW = 160;
+  const colW = 170;
   const minW = columns.length * colW;
 
   const filtered = useMemo(() => {
@@ -45,12 +48,13 @@ export default function Page() {
       if (!Array.isArray(payload?.data)) setErr("No data array. Check env/token/accountId.");
     } catch (e) {
       setRows([]); setErr(e.message || "Failed");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
 
+  const Header = ({children}) => (
+    <div style={{ padding:"10px 12px", background:"#0e1430", borderBottom:"1px solid #1b2340", fontWeight:600 }}>{children}</div>
+  );
   const Cell = ({children, i}) => (
     <div style={{
       padding:"10px 12px",
@@ -79,12 +83,11 @@ export default function Page() {
 
       <div style={{ overflowX:"auto", border:"1px solid #1b2340", borderRadius:14 }}>
         <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, ${colW}px)`, gap:8, minWidth:minW, fontSize:13 }}>
-          {columns.map(h=>(
-            <div key={h} style={{ padding:"10px 12px", background:"#0e1430", borderBottom:"1px solid #1b2340", fontWeight:600 }}>{h}</div>
-          ))}
+          {columns.map((h) => <Header key={h}>{h}</Header>)}
 
           {filtered.map((r, i) => (
             <>
+              {/* core */}
               <Cell i={i}>{r.iccid ?? ""}</Cell>
               <Cell i={i}>{r.imsi ?? ""}</Cell>
               <Cell i={i}>{r.phoneNumber ?? ""}</Cell>
@@ -92,8 +95,8 @@ export default function Page() {
               <Cell i={i}>{r.simStatus ?? ""}</Cell>
               <Cell i={i}>{String(r.esim ?? "")}</Cell>
               <Cell i={i}>{r.activationCode ?? ""}</Cell>
-              <Cell i={i}>{r.activationDate ?? ""}</Cell>
-              <Cell i={i}>{r.lastUsageDate ?? ""}</Cell>
+              <Cell i={i}>{fmtDT(r.activationDate)}</Cell>
+              <Cell i={i}>{fmtDT(r.lastUsageDate)}</Cell>
               <Cell i={i}>{String(r.prepaid ?? "")}</Cell>
               <Cell i={i}>{r.balance ?? ""}</Cell>
               <Cell i={i}>{r.account ?? ""}</Cell>
@@ -101,31 +104,27 @@ export default function Page() {
               <Cell i={i}>{r.lastMcc ?? ""}</Cell>
               <Cell i={i}>{r.lastMnc ?? ""}</Cell>
 
+              {/* package */}
               <Cell i={i}>{r.prepaidpackagetemplatename ?? ""}</Cell>
               <Cell i={i}>{r.prepaidpackagetemplateid ?? ""}</Cell>
-              <Cell i={i}>{r.tsactivationutc ?? ""}</Cell>
-              <Cell i={i}>{r.tsexpirationutc ?? ""}</Cell>
+              <Cell i={i}>{fmtDT(r.tsactivationutc)}</Cell>
+              <Cell i={i}>{fmtDT(r.tsexpirationutc)}</Cell>
               <Cell i={i}>{r.pckdatabyte ?? ""}</Cell>
               <Cell i={i}>{r.useddatabyte ?? ""}</Cell>
               <Cell i={i}>{bytesToGB(r.pckdatabyte)}</Cell>
               <Cell i={i}>{bytesToGB(r.useddatabyte)}</Cell>
 
-              <Cell i={i}>{bytesToGB(r.W1_bytes)}</Cell>
-              <Cell i={i}>{bytesToGB(r.W2_bytes)}</Cell>
-              <Cell i={i}>{bytesToGB(r.W3_bytes)}</Cell>
-              <Cell i={i}>{bytesToGB(r.W4_bytes)}</Cell>
-
-              <Cell i={i}>{money(r.W1_subscriberCost)}</Cell>
-              <Cell i={i}>{money(r.W2_subscriberCost)}</Cell>
-              <Cell i={i}>{money(r.W3_subscriberCost)}</Cell>
-              <Cell i={i}>{money(r.W4_subscriberCost)}</Cell>
+              {/* totals since 2025-06-01 */}
+              <Cell i={i}>{bytesToGB(r.totalBytesSinceJun1)}</Cell>
+              <Cell i={i}>{money(r.subscriberCostSinceJun1)}</Cell>
+              <Cell i={i}>{money(r.resellerCostSinceJun1)}</Cell>
             </>
           ))}
         </div>
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12 }}>
-        Weekly usage comes from <code>subscriberUsageOverPeriod</code> (≤ 7 days per call) and includes <code>total.subscriberCost</code> for each week. See API guide. :contentReference[oaicite:3]{index=3}
+        Usage & costs aggregated from <b>2025-06-01</b> to today (one-week API windows). Dates shown without “T”.
       </p>
     </main>
   );
