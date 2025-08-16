@@ -37,7 +37,7 @@ export default function Page() {
 
   const logoSrc = process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png";
 
-  // fetch accounts list
+  // load accounts
   async function loadAccounts() {
     const r = await fetch("/api/accounts", { cache: "no-store" });
     const t = await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch{}
@@ -45,7 +45,7 @@ export default function Page() {
   }
   useEffect(() => { loadAccounts(); }, []);
 
-  // fetch data for current account
+  // load data for selected account
   async function load() {
     setErr(""); setLoading(true);
     try {
@@ -61,14 +61,14 @@ export default function Page() {
   }
   useEffect(() => { load(); }, []);
 
-  // search filter
+  // filter rows
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return rows;
     return rows.filter(r => Object.values(r).some(v => String(v ?? "").toLowerCase().includes(n)));
   }, [rows, q]);
 
-  // totals for selected account
+  // totals (current account)
   const totals = useMemo(() => {
     let totalReseller = 0;
     let totalSubscriberOneTime = 0;
@@ -79,7 +79,7 @@ export default function Page() {
     return { totalReseller, totalSubscriberOneTime };
   }, [rows]);
 
-  // exports
+  // export buttons
   function exportCSV() {
     const headers = [...columns];
     const lines = [headers.join(",")];
@@ -135,7 +135,6 @@ export default function Page() {
 
   // styles
   const colW = 170;
-  const minW = columns.length * colW;
   const headerBox = { padding:"10px 12px", background:"#eaf6c9", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" };
   const cellBox = (i) => ({
     padding:"10px 12px",
@@ -146,89 +145,42 @@ export default function Page() {
   });
 
   return (
-    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto", background:"#eff4db", color:"#000" }}>
+    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
       {/* logo */}
       <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
         <img src={logoSrc} alt="Teltrip" style={{ height: 64 }} />
       </div>
 
-      {/* ACCOUNTS BAR: dropdown + tabs + search */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr 260px", gap:12, alignItems:"center", marginBottom:10 }}>
-        {/* dropdown */}
+      {/* ACCOUNTS: dropdown + refresh + filter */}
+      <div style={{ display:"grid", gridTemplateColumns:"280px auto 260px", gap:12, alignItems:"center", marginBottom:10 }}>
         <select
           value={String(accountId)}
           onChange={e=>{ setAccountId(e.target.value); setTimeout(load,0); }}
           style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
         >
-          {accounts.length === 0 && <option value={String(accountId)}>No accounts found (click Refresh)</option>}
-          {accounts.map(a => (
-            <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>
-          ))}
+          {accounts
+            .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
+            .map(a => <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>)
+          }
+          {accounts.length === 0 && <option>Loading accounts…</option>}
         </select>
 
-        {/* tabs */}
-        <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
-          {accounts.map(a => (
-            <button
-              key={`tab-${a.id}`}
-              onClick={()=>{ setAccountId(String(a.id)); setTimeout(load,0); }}
-              title={String(a.id)}
-              style={{
-                padding:"6px 10px",
-                borderRadius:10,
-                border:"1px solid #cbd5a7",
-                background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
-                color:"#000",
-                whiteSpace:"nowrap",
-                cursor:"pointer"
-              }}
-            >
-              {a.name} — {a.id}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={loadAccounts}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer", justifySelf:"start" }}
+        >
+          Refresh accounts
+        </button>
 
-        {/* search + refresh */}
-        <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
-          <button
-            onClick={loadAccounts}
-            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
-          >
-            Refresh accounts
-          </button>
-          <input
-            placeholder="Filter tabs by name…"
-            value={accountSearch}
-            onChange={e=>setAccountSearch(e.target.value)}
-            style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:160 }}
-          />
-        </div>
+        <input
+          placeholder="Filter accounts by name…"
+          value={accountSearch}
+          onChange={e=>setAccountSearch(e.target.value)}
+          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
+        />
       </div>
 
-      {/* filter tabs with search */}
-      <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:8, marginBottom:8 }}>
-        {accounts
-          .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
-          .map(a => (
-            <button
-              key={`ftab-${a.id}`}
-              onClick={()=>{ setAccountId(String(a.id)); setTimeout(load,0); }}
-              style={{
-                padding:"6px 10px",
-                borderRadius:10,
-                border:"1px solid #cbd5a7",
-                background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
-                color:"#000",
-                whiteSpace:"nowrap",
-                cursor:"pointer"
-              }}
-            >
-              {a.name} — {a.id}
-            </button>
-          ))}
-      </div>
-
-      {/* top controls + totals for selected account */}
+      {/* top controls + totals */}
       <header style={{ display:"grid", gridTemplateColumns:"auto auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
         <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
 
@@ -239,7 +191,6 @@ export default function Page() {
           style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}
         />
 
-        {/* totals */}
         <div style={{
           justifySelf:"start",
           display:"flex",
@@ -256,46 +207,19 @@ export default function Page() {
           <div><b>Total Subscriber Cost:</b> {money(totals.totalSubscriberOneTime)}</div>
         </div>
 
-        <button
-          onClick={load}
-          disabled={loading}
-          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#cfeaa1", color:"#000", cursor:"pointer" }}
-        >
+        <button onClick={load} disabled={loading}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#cfeaa1", color:"#000", cursor:"pointer" }}>
           {loading ? "Loading…" : "Load"}
         </button>
 
-        <button
-          onClick={exportCSV}
-          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
-        >
+        <button onClick={exportCSV}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}>
           Export CSV
         </button>
 
         <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
-          <button
-            onClick={()=>{
-              const data = filtered.map(r => ({
-                ICCID:r.iccid, IMSI:r.imsi, phone:r.phoneNumber,
-                subscriberStatus:r.subscriberStatus, simStatus:r.simStatus,
-                activationCode:r.activationCode, activationDate:fmtDT(r.activationDate),
-                lastUsageDate:fmtDT(r.lastUsageDate), prepaid:String(r.prepaid ?? ""),
-                balance:r.balance, account:r.account, reseller:r.reseller,
-                lastMcc:r.lastMcc, lastMnc:r.lastMnc,
-                prepaidpackagetemplatename:r.prepaidpackagetemplatename, prepaidpackagetemplateid:r.prepaidpackagetemplateid,
-                tsactivationutc:fmtDT(r.tsactivationutc), tsexpirationutc:fmtDT(r.tsexpirationutc),
-                pckdatabyte:r.pckdatabyte, useddatabyte:r.useddatabyte,
-                pckdata_GB:bytesToGB(r.pckdatabyte), used_GB:bytesToGB(r.useddatabyte),
-                subscriberOneTimeCost:money(r.subscriberOneTimeCost),
-                usageSinceJun1_GB:bytesToGB(r.totalBytesSinceJun1),
-                resellerCostSinceJun1:money(r.resellerCostSinceJun1)
-              }));
-              const ws = XLSX.utils.json_to_sheet(data);
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Teltrip");
-              XLSX.writeFile(wb, `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.xlsx`);
-            }}
-            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}
-          >
+          <button onClick={exportExcel}
+            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}>
             Export Excel
           </button>
           <input
@@ -313,9 +237,9 @@ export default function Page() {
         </div>
       )}
 
-      {/* data table */}
+      {/* table */}
       <div style={{ overflowX:"auto", border:"1px solid #cbd5a7", borderRadius:14 }}>
-        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, 170px)`, gap:8, minWidth:minW, fontSize:13 }}>
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, ${colW}px)`, gap:8, minWidth:columns.length*colW, fontSize:13 }}>
           {columns.map(h=>(
             <div key={h} style={headerBox}>{h}</div>
           ))}
@@ -355,7 +279,7 @@ export default function Page() {
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
-        Dropdown + tabs load accounts from <code>/api/accounts</code>. Totals reflect the selected account. Logo from <code>/public/logo.png</code> or <code>NEXT_PUBLIC_LOGO_URL</code>.
+        Select an account from the dropdown to load its data. Logo from <code>/public/logo.png</code> or <code>NEXT_PUBLIC_LOGO_URL</code>.
       </p>
     </main>
   );
