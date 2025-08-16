@@ -45,13 +45,12 @@ export async function GET(req) {
   try {
     const resellerId = getResellerId(req);
 
-    // 1) Per your guide: try listResellerAccount (singular) first
-    //    If resellerId is provided, include it; otherwise call without to list all.
+    // Per guide: try listResellerAccount (singular) first
     const primaryBodies = [
-      resellerId ? { listResellerAccount: { resellerId } } : { listResellerAccount: {} },
+      resellerId ? { listResellerAccount: { resellerId } } : { listResellerAccount: {} }
     ];
 
-    // 2) Fallbacks for different tenants
+    // Fallbacks for different tenants
     const fallbackBodies = [
       { listAccount: {} },
       { listAccounts: {} },
@@ -68,23 +67,22 @@ export async function GET(req) {
           resp?.listAccount?.accounts ??
           resp?.listAccounts?.accounts ??
           resp?.listResellerAccounts?.accounts ??
-          resp?.listCustomerAccounts?.accounts ??
-          [];
+          resp?.listCustomerAccounts?.accounts ?? [];
         if (Array.isArray(arr) && arr.length) {
           accounts = normalize(arr);
           break;
         }
-      } catch (_) {}
+      } catch {}
     }
 
-    // 3) Ultimate fallback: show the default env account (so UI still works)
+    // Ultimate fallback: default env account (so UI still works)
     if (accounts.length === 0 && process.env.OCS_ACCOUNT_ID) {
       try {
         const ls = await callOCS({ listSubscriber: { accountId: Number(process.env.OCS_ACCOUNT_ID) } });
         const subs = ls?.listSubscriber?.subscriberList || [];
         const name = subs?.[0]?.account || `Account ${process.env.OCS_ACCOUNT_ID}`;
         accounts = [{ id: Number(process.env.OCS_ACCOUNT_ID), name }];
-      } catch (_) {}
+      } catch {}
     }
 
     return NextResponse.json({ ok: true, data: accounts });
