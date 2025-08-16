@@ -21,27 +21,49 @@ async function callOCS(body) {
   return json ?? {};
 }
 
-export async function GET() {
+function normalize(arr) {
+  return (arr || [])
+    .map(a => ({
+      id: a?.accountId ?? a?.id ?? null,
+      name: a?.accountName ?? a?.name ?? (a?.label ?? (a?.id ? `Account ${a.id}` : null))
+    }))
+    .filter(a => a.id && a.name);
+}
+
+export async function GET(req) {
   try {
-    const tries = [
-      { body:{ listAccount:{} }, pick:r => r?.listAccount?.accounts },
-      { body:{ listAccounts:{} }, pick:r => r?.listAccounts?.accounts },
-      { body:{ listResellerAccounts:{} }, pick:r => r?.listResellerAccounts?.accounts }
+    // Try multiple likely ops; some tenants expose different names
+    const attempts = [
+      { body: { listAccount: {} }, pick: r => r?.listAccount?.accounts },
+      { body: { listAccounts: {} }, pick: r => r?.listAccounts?.accounts },
+      { body: { listResellerAccounts: {} }, pick: r => r?.listResellerAccounts?.accounts },
+      { body: { listCustomerAccounts: {} }, pick: r => r?.listCustomerAccounts?.accounts }
     ];
+
     let accounts = [];
-    for (const t of tries) {
+    for (const t of attempts) {
       try {
         const resp = await callOCS(t.body);
         const arr = t.pick(resp);
-        if (Array.isArray(arr) && arr.length) { accounts = arr; break; }
-      } catch {}
+        if (Array.isArray(arr) && arr.length) {
+          accounts = normalize(arr);
+          break;
+        }
+      } catch (_) {}
     }
-    const normalized = accounts.map(a => ({
-      id: a?.accountId ?? a?.id ?? null,
-      name: a?.accountName ?? a?.name ?? `Account ${a?.accountId ?? ""}`
-    })).filter(a => a.id);
-    return NextResponse.json({ ok:true, data: normalized });
+
+    // Fallback: if still empty, try to infer from listSubscriber of the default account
+    if (accounts.length === 0 && process.env.OCS_ACCOUNT_ID) {
+      try {
+        const ls = await callOCS({ listSubscriber: { accountId: Number(process.env.OCS_ACCOUNT_ID) } });
+        const subs = ls?.listSubscriber?.subscriberList || [];
+        const name = subs?.[0]?.account || `Account ${process.env.OCS_ACCOUNT_ID}`;
+        accounts = [{ id: Number(process.env.OCS_ACCOUNT_ID), name }];
+      } catch (_) {}
+    }
+
+    return NextResponse.json({ ok: true, data: accounts });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:e.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
