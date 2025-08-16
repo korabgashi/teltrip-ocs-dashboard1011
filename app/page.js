@@ -12,7 +12,7 @@ async function safeFetch(url) {
   return json ?? {};
 }
 
-// small utils
+// utils
 const bytesToGB = (b) => (b == null || isNaN(b)) ? "" : (Number(b) / (1024 ** 3)).toFixed(2);
 const money = (n) => (n == null || isNaN(n)) ? "" : Number(n).toFixed(2);
 const fmtDT = (s) => typeof s === "string" ? s.replace("T", " ") : s ?? "";
@@ -31,19 +31,19 @@ export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
   const [accounts, setAccounts] = useState([]);
   const [accountSearch, setAccountSearch] = useState("");
 
-  // logo source (local / public/logo.png preferred; URL fallback via env)
   const logoSrc = process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png";
 
-  // fetch accounts for tab view
-  useEffect(() => {
-    fetch("/api/accounts").then(r=>r.text()).then(t=>{
-      let j=null; try{ j=t?JSON.parse(t):null; }catch{}
-      if (j?.ok && Array.isArray(j.data)) setAccounts(j.data);
-    }).catch(()=>{});
-  }, []);
+  // fetch accounts list
+  async function loadAccounts() {
+    const r = await fetch("/api/accounts", { cache: "no-store" });
+    const t = await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch{}
+    if (j?.ok && Array.isArray(j.data)) setAccounts(j.data);
+  }
+  useEffect(() => { loadAccounts(); }, []);
 
   // fetch data for current account
   async function load() {
@@ -57,11 +57,9 @@ export default function Page() {
       if (!Array.isArray(payload?.data)) setErr("No data array. Check env/token/accountId.");
     } catch (e) {
       setRows([]); setErr(e.message || "Failed");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
-  useEffect(() => { load(); /* auto-load on first mount */ }, []);
+  useEffect(() => { load(); }, []);
 
   // search filter
   const filtered = useMemo(() => {
@@ -70,7 +68,7 @@ export default function Page() {
     return rows.filter(r => Object.values(r).some(v => String(v ?? "").toLowerCase().includes(n)));
   }, [rows, q]);
 
-  // top totals for this account (sum across subscribers)
+  // totals for selected account
   const totals = useMemo(() => {
     let totalReseller = 0;
     let totalSubscriberOneTime = 0;
@@ -148,42 +146,86 @@ export default function Page() {
   });
 
   return (
-    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
-      {/* centered logo */}
+    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto", background:"#eff4db", color:"#000" }}>
+      {/* logo */}
       <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
         <img src={logoSrc} alt="Teltrip" style={{ height: 64 }} />
       </div>
 
-      {/* account tabs + search */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"center", marginBottom:10 }}>
+      {/* ACCOUNTS BAR: dropdown + tabs + search */}
+      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr 260px", gap:12, alignItems:"center", marginBottom:10 }}>
+        {/* dropdown */}
+        <select
+          value={String(accountId)}
+          onChange={e=>{ setAccountId(e.target.value); setTimeout(load,0); }}
+          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
+        >
+          {accounts.length === 0 && <option value={String(accountId)}>No accounts found (click Refresh)</option>}
+          {accounts.map(a => (
+            <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>
+          ))}
+        </select>
+
+        {/* tabs */}
         <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
-          {accounts
-            .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
-            .map(a => (
-              <button
-                key={a.id}
-                onClick={()=>{ setAccountId(String(a.id)); setTimeout(load, 0); }}
-                title={String(a.id)}
-                style={{
-                  padding:"6px 10px",
-                  borderRadius:10,
-                  border:"1px solid #cbd5a7",
-                  background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
-                  color:"#000",
-                  whiteSpace:"nowrap",
-                  cursor:"pointer"
-                }}
-              >
-                {a.name} — {a.id}
-              </button>
-            ))}
+          {accounts.map(a => (
+            <button
+              key={`tab-${a.id}`}
+              onClick={()=>{ setAccountId(String(a.id)); setTimeout(load,0); }}
+              title={String(a.id)}
+              style={{
+                padding:"6px 10px",
+                borderRadius:10,
+                border:"1px solid #cbd5a7",
+                background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
+                color:"#000",
+                whiteSpace:"nowrap",
+                cursor:"pointer"
+              }}
+            >
+              {a.name} — {a.id}
+            </button>
+          ))}
         </div>
-        <input
-          placeholder="Search accounts…"
-          value={accountSearch}
-          onChange={e=>setAccountSearch(e.target.value)}
-          style={{ padding:"8px 10px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", minWidth:220 }}
-        />
+
+        {/* search + refresh */}
+        <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
+          <button
+            onClick={loadAccounts}
+            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
+          >
+            Refresh accounts
+          </button>
+          <input
+            placeholder="Filter tabs by name…"
+            value={accountSearch}
+            onChange={e=>setAccountSearch(e.target.value)}
+            style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:160 }}
+          />
+        </div>
+      </div>
+
+      {/* filter tabs with search */}
+      <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:8, marginBottom:8 }}>
+        {accounts
+          .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
+          .map(a => (
+            <button
+              key={`ftab-${a.id}`}
+              onClick={()=>{ setAccountId(String(a.id)); setTimeout(load,0); }}
+              style={{
+                padding:"6px 10px",
+                borderRadius:10,
+                border:"1px solid #cbd5a7",
+                background: String(a.id)===String(accountId) ? "#bfe080" : "#d9e8a6",
+                color:"#000",
+                whiteSpace:"nowrap",
+                cursor:"pointer"
+              }}
+            >
+              {a.name} — {a.id}
+            </button>
+          ))}
       </div>
 
       {/* top controls + totals for selected account */}
@@ -231,7 +273,27 @@ export default function Page() {
 
         <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
           <button
-            onClick={exportExcel}
+            onClick={()=>{
+              const data = filtered.map(r => ({
+                ICCID:r.iccid, IMSI:r.imsi, phone:r.phoneNumber,
+                subscriberStatus:r.subscriberStatus, simStatus:r.simStatus,
+                activationCode:r.activationCode, activationDate:fmtDT(r.activationDate),
+                lastUsageDate:fmtDT(r.lastUsageDate), prepaid:String(r.prepaid ?? ""),
+                balance:r.balance, account:r.account, reseller:r.reseller,
+                lastMcc:r.lastMcc, lastMnc:r.lastMnc,
+                prepaidpackagetemplatename:r.prepaidpackagetemplatename, prepaidpackagetemplateid:r.prepaidpackagetemplateid,
+                tsactivationutc:fmtDT(r.tsactivationutc), tsexpirationutc:fmtDT(r.tsexpirationutc),
+                pckdatabyte:r.pckdatabyte, useddatabyte:r.useddatabyte,
+                pckdata_GB:bytesToGB(r.pckdatabyte), used_GB:bytesToGB(r.useddatabyte),
+                subscriberOneTimeCost:money(r.subscriberOneTimeCost),
+                usageSinceJun1_GB:bytesToGB(r.totalBytesSinceJun1),
+                resellerCostSinceJun1:money(r.resellerCostSinceJun1)
+              }));
+              const ws = XLSX.utils.json_to_sheet(data);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Teltrip");
+              XLSX.writeFile(wb, `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.xlsx`);
+            }}
             style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}
           >
             Export Excel
@@ -245,9 +307,15 @@ export default function Page() {
         </div>
       </header>
 
+      {err && (
+        <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>
+          {err}
+        </div>
+      )}
+
       {/* data table */}
       <div style={{ overflowX:"auto", border:"1px solid #cbd5a7", borderRadius:14 }}>
-        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, 170px)`, gap:8, minWidth:columns.length*170, fontSize:13 }}>
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, 170px)`, gap:8, minWidth:minW, fontSize:13 }}>
           {columns.map(h=>(
             <div key={h} style={headerBox}>{h}</div>
           ))}
@@ -287,7 +355,7 @@ export default function Page() {
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
-        Tabs = Accounts (Name — ID) from OCS. Totals reflect the currently selected account.
+        Dropdown + tabs load accounts from <code>/api/accounts</code>. Totals reflect the selected account. Logo from <code>/public/logo.png</code> or <code>NEXT_PUBLIC_LOGO_URL</code>.
       </p>
     </main>
   );
