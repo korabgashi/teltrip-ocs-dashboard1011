@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
-import { fetchAllData } from "../../../lib/teltrip";
-export const dynamic = "force-dynamic"; export const runtime = "nodejs";
-export async function GET(req){
-  try{ const { searchParams } = new URL(req.url);
-    const accountId = searchParams.get("accountId") || undefined;
-    const data = await fetchAllData(accountId);
-    return NextResponse.json({ok:true,data});
-  }catch(err){ return NextResponse.json({ok:false,error:err?.message||"Unknown error"},{status:500}); }
+
+const BASE = process.env.OCS_BASE_URL;
+const TOKEN = process.env.OCS_TOKEN;
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(req) {
+  try {
+    if (!BASE || !TOKEN) throw new Error("Missing OCS_BASE_URL / OCS_TOKEN");
+    const body = await req.json(); // raw OCS payload you want to try
+    const url = `${BASE}?token=${encodeURIComponent(TOKEN)}`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store"
+    });
+    const txt = await r.text();
+    let data;
+    try { data = JSON.parse(txt); } catch { data = { nonJson: txt }; }
+    return NextResponse.json({ ok: true, status: r.status, data });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+  }
 }
