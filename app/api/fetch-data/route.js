@@ -1,9 +1,9 @@
-export const maxDuration = 960;  // allow longer processing on Vercel
 import { NextResponse } from "next/server";
 import { fetchAllData } from "../../../lib/teltrip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60; // allow longer processing on Vercel
 
 export async function GET(req) {
   try {
