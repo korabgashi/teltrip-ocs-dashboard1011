@@ -182,7 +182,7 @@ export default function Page() {
 
       {/* top controls + totals */}
       <header style={{ display:"grid", gridTemplateColumns:"auto auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
-        <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
+        <h1 style={{ margin:0, color:"#000" }}>Dashboard</h1>
 
         <input
           value={accountId}
