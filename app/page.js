@@ -165,33 +165,38 @@ async function loadAccounts() {
       </div>
 
       {/* ACCOUNTS: dropdown + refresh + filter */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px auto 260px", gap:12, alignItems:"center", marginBottom:10 }}>
-        <select
-          value={String(accountId)}
-          onChange={e=>{ setAccountId(e.target.value); setTimeout(load,0); }}
-          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
-        >
-          {accounts
-            .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
-            .map(a => <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>)
-          }
-          {accounts.length === 0 && <option>Loading accounts…</option>}
-        </select>
+<div style={{ display:"grid", gridTemplateColumns:"280px auto 260px", gap:12, alignItems:"center", marginBottom:10 }}>
+  <select
+    value={String(accountId)}
+    onChange={e=>{ setAccountId(e.target.value); setTimeout(load,0); }}
+    style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
+  >
+    {accounts.length === 0 && (
+      <option value="">No accounts found — click “Refresh accounts” or set OCS_RESELLER_ID</option>
+    )}
+    {accounts
+      .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
+      .map(a => (
+        <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>
+      ))
+    }
+  </select>
 
-        <button
-          onClick={loadAccounts}
-          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer", justifySelf:"start" }}
-        >
-          Refresh accounts
-        </button>
+  <button
+    onClick={loadAccounts}
+    style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer", justifySelf:"start" }}
+  >
+    Refresh accounts
+  </button>
 
-        <input
-          placeholder="Filter accounts by name…"
-          value={accountSearch}
-          onChange={e=>setAccountSearch(e.target.value)}
-          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
-        />
-      </div>
+  <input
+    placeholder="Filter accounts by name…"
+    value={accountSearch}
+    onChange={e=>setAccountSearch(e.target.value)}
+    style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
+  />
+</div>
+
 
       {/* top controls + totals */}
       <header style={{ display:"grid", gridTemplateColumns:"auto auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
