@@ -37,13 +37,26 @@ export default function Page() {
 
   const logoSrc = process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png";
 
-  // load accounts
-  async function loadAccounts() {
-    const r = await fetch("/api/accounts", { cache: "no-store" });
+async function loadAccounts() {
+  const rid = process.env.NEXT_PUBLIC_RESELLER_ID;
+  const url = rid ? `/api/accounts?resellerId=${encodeURIComponent(rid)}` : "/api/accounts";
+  try {
+    const r = await fetch(url, { cache: "no-store" });
     const t = await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch{}
-    if (j?.ok && Array.isArray(j.data)) setAccounts(j.data);
+    if (j?.ok && Array.isArray(j.data) && j.data.length) {
+      setAccounts(j.data);
+      // pick first if current accountId isn't in list
+      if (!j.data.some(a => String(a.id) === String(accountId))) {
+        setAccountId(String(j.data[0].id));
+        setTimeout(load, 0);
+      }
+    } else {
+      setAccounts([]);
+    }
+  } catch {
+    setAccounts([]);
   }
-  useEffect(() => { loadAccounts(); }, []);
+}
 
   // load data for selected account
   async function load() {
