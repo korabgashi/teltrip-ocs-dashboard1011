@@ -37,26 +37,19 @@ export default function Page() {
 
   const logoSrc = process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png";
 
-async function loadAccounts() {
-  const rid = process.env.NEXT_PUBLIC_RESELLER_ID;
-  const url = rid ? `/api/accounts?resellerId=${encodeURIComponent(rid)}` : "/api/accounts";
-  try {
+  // load accounts (listResellerAccount → flattened in API)
+  async function loadAccounts() {
+    const url = "/api/accounts";
     const r = await fetch(url, { cache: "no-store" });
     const t = await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch{}
-    if (j?.ok && Array.isArray(j.data) && j.data.length) {
+    if (j?.ok && Array.isArray(j.data)) {
       setAccounts(j.data);
-      // pick first if current accountId isn't in list
-      if (!j.data.some(a => String(a.id) === String(accountId))) {
+      if (!j.data.some(a => String(a.id) === String(accountId)) && j.data.length) {
         setAccountId(String(j.data[0].id));
-        setTimeout(load, 0);
       }
-    } else {
-      setAccounts([]);
     }
-  } catch {
-    setAccounts([]);
   }
-}
+  useEffect(() => { loadAccounts(); }, []);
 
   // load data for selected account
   async function load() {
@@ -72,7 +65,7 @@ async function loadAccounts() {
       setRows([]); setErr(e.message || "Failed");
     } finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [accountId]); // reload when account changes
 
   // filter rows
   const filtered = useMemo(() => {
@@ -81,7 +74,7 @@ async function loadAccounts() {
     return rows.filter(r => Object.values(r).some(v => String(v ?? "").toLowerCase().includes(n)));
   }, [rows, q]);
 
-  // totals (current account)
+  // totals (current account) + PNL
   const totals = useMemo(() => {
     let totalReseller = 0;
     let totalSubscriberOneTime = 0;
@@ -89,7 +82,8 @@ async function loadAccounts() {
       if (Number.isFinite(r?.resellerCostSinceJun1)) totalReseller += Number(r.resellerCostSinceJun1);
       if (Number.isFinite(r?.subscriberOneTimeCost)) totalSubscriberOneTime += Number(r.subscriberOneTimeCost);
     }
-    return { totalReseller, totalSubscriberOneTime };
+    const pnl = totalSubscriberOneTime - totalReseller;
+    return { totalReseller, totalSubscriberOneTime, pnl };
   }, [rows]);
 
   // export buttons
@@ -158,56 +152,44 @@ async function loadAccounts() {
   });
 
   return (
-    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
+    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto", background:"#eff4db", color:"#000" }}>
       {/* logo */}
       <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
-        <img src={logoSrc} alt="Teltrip" style={{ height: 64 }} />
+        <img src={process.env.NEXT_PUBLIC_LOGO_URL || "/logo.png"} alt="Teltrip" style={{ height: 64 }} />
       </div>
 
       {/* ACCOUNTS: dropdown + refresh + filter */}
-<div style={{ display:"grid", gridTemplateColumns:"280px auto 260px", gap:12, alignItems:"center", marginBottom:10 }}>
-  <select
-    value={String(accountId)}
-    onChange={e=>{ setAccountId(e.target.value); setTimeout(load,0); }}
-    style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
-  >
-    {accounts.length === 0 && (
-      <option value="">No accounts found — click “Refresh accounts” or set OCS_RESELLER_ID</option>
-    )}
-    {accounts
-      .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
-      .map(a => (
-        <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>
-      ))
-    }
-  </select>
+      <div style={{ display:"grid", gridTemplateColumns:"280px auto 260px", gap:12, alignItems:"center", marginBottom:10 }}>
+        <select
+          value={String(accountId)}
+          onChange={e=>{ setAccountId(e.target.value); }}
+          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
+        >
+          {accounts
+            .filter(a => a.name.toLowerCase().includes((accountSearch||"").toLowerCase()))
+            .map(a => <option key={a.id} value={String(a.id)}>{a.name} — {a.id}</option>)
+          }
+          {accounts.length === 0 && <option>Loading accounts…</option>}
+        </select>
 
-  <button
-    onClick={loadAccounts}
-    style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer", justifySelf:"start" }}
-  >
-    Refresh accounts
-  </button>
-
-  <input
-    placeholder="Filter accounts by name…"
-    value={accountSearch}
-    onChange={e=>setAccountSearch(e.target.value)}
-    style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
-  />
-</div>
-
-
-      {/* top controls + totals */}
-      <header style={{ display:"grid", gridTemplateColumns:"auto auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
-        <h1 style={{ margin:0, color:"#000" }}>Dashboard</h1>
+        <button
+          onClick={loadAccounts}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer", justifySelf:"start" }}
+        >
+          Refresh accounts
+        </button>
 
         <input
-          value={accountId}
-          onChange={e=>setAccountId(e.target.value)}
-          placeholder="Account ID"
-          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}
+          placeholder="Filter accounts by name…"
+          value={accountSearch}
+          onChange={e=>setAccountSearch(e.target.value)}
+          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:"100%" }}
         />
+      </div>
+
+      {/* top controls + totals + PNL */}
+      <header style={{ display:"grid", gridTemplateColumns:"auto 1fr auto auto 260px", gap:12, alignItems:"center", marginBottom:14 }}>
+        <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
 
         <div style={{
           justifySelf:"start",
@@ -218,16 +200,19 @@ async function loadAccounts() {
           border:"1px solid #cbd5a7",
           borderRadius:10,
           padding:"8px 12px",
-          color:"#000"
+          color:"#000",
+          whiteSpace:"nowrap"
         }}>
+          <div><b>Total Subscriber Cost:</b> {money(totals.totalSubscriberOneTime)}</div>
+          <div>|</div>
           <div><b>Total Reseller Cost:</b> {money(totals.totalReseller)}</div>
           <div>|</div>
-          <div><b>Total Subscriber Cost:</b> {money(totals.totalSubscriberOneTime)}</div>
+          <div><b>PNL:</b> {money(totals.pnl)}</div>
         </div>
 
         <button onClick={load} disabled={loading}
           style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#cfeaa1", color:"#000", cursor:"pointer" }}>
-          {loading ? "Loading…" : "Load"}
+          {loading ? "Loading…" : "Reload"}
         </button>
 
         <button onClick={exportCSV}
@@ -235,18 +220,10 @@ async function loadAccounts() {
           Export CSV
         </button>
 
-        <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
-          <button onClick={exportExcel}
-            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}>
-            Export Excel
-          </button>
-          <input
-            value={q}
-            onChange={e=>setQ(e.target.value)}
-            placeholder="Search rows…"
-            style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:260 }}
-          />
-        </div>
+        <button onClick={exportExcel}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}>
+          Export Excel
+        </button>
       </header>
 
       {err && (
@@ -297,7 +274,7 @@ async function loadAccounts() {
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
-        Select an account from the dropdown to load its data. Logo from <code>/public/logo.png</code> or <code>NEXT_PUBLIC_LOGO_URL</code>.
+        Costs: package one-time from template; reseller cost aggregated since <b>2025-06-01</b>. PNL = Subscriber One-Time − Reseller Cost.
       </p>
     </main>
   );
