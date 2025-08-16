@@ -21,12 +21,12 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // Columns (includes your new totals + resellerCost + no “T” in displayed dates)
+  // Columns (one-time Subscriber Cost from package; totals keep reseller only)
   const columns = [
     "ICCID","IMSI","phoneNumber","subscriberStatus","simStatus","esim","activationCode",
     "activationDate","lastUsageDate","prepaid","balance","account","reseller","lastMcc","lastMnc",
     "prepaidpackagetemplatename","prepaidpackagetemplateid","tsactivationutc","tsexpirationutc","pckdatabyte","useddatabyte","pckdata(GB)","used(GB)",
-    "usageSinceJun1(GB)","subscriberCostSinceJun1","resellerCostSinceJun1"
+    "subscriberOneTimeCost","usageSinceJun1(GB)","resellerCostSinceJun1"
   ];
   const colW = 170;
   const minW = columns.length * colW;
@@ -48,40 +48,48 @@ export default function Page() {
       if (!Array.isArray(payload?.data)) setErr("No data array. Check env/token/accountId.");
     } catch (e) {
       setRows([]); setErr(e.message || "Failed");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { load(); }, []);
 
   const Header = ({children}) => (
-    <div style={{ padding:"10px 12px", background:"#0e1430", borderBottom:"1px solid #1b2340", fontWeight:600 }}>{children}</div>
+    <div style={{ padding:"10px 12px", background:"#e5edc2", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" }}>{children}</div>
   );
   const Cell = ({children, i}) => (
     <div style={{
       padding:"10px 12px",
-      borderBottom:"1px solid #111730",
-      background: i%2? "#0b1024":"#0b1020",
-      wordBreak:"break-all"
+      borderBottom:"1px solid #cbd5a7",
+      background: i%2? "#ffffff":"#f6fadf",
+      wordBreak:"break-all",
+      color:"#000"
     }}>{children}</div>
   );
 
   return (
-    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
+    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto", background:"#eff4db", color:"#000" }}>
+      {/* Logo (optional; place /public/logo.png) */}
+      <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
+        <img src="/logo.png" alt="Teltrip" style={{ height: 56 }} />
+      </div>
+
       <header style={{ display:"grid", gridTemplateColumns:"auto auto auto 1fr 260px", gap:12, alignItems:"center", marginBottom:14 }}>
-        <h1 style={{ margin:0 }}>Teltrip Dashboard</h1>
+        <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
         <input value={accountId} onChange={e=>setAccountId(e.target.value)} placeholder="Account ID"
-               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #2a3353", background:"#0e1430", color:"#e9edf5", width:180 }}/>
+               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}/>
         <button onClick={load} disabled={loading}
-                style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #2a3353", background:"#151a2e", color:"#e9edf5", cursor:"pointer" }}>
+                style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#d9e8a6", color:"#000", cursor:"pointer" }}>
           {loading ? "Loading…" : "Load"}
         </button>
         <div/>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…"
-               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #2a3353", background:"#0e1430", color:"#e9edf5", width:260 }}/>
+               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:260 }}/>
       </header>
 
-      {err && <div style={{ background:"#3a0f12", border:"1px solid #7a1c22", color:"#ffd7d7", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>{err}</div>}
+      {err && <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>{err}</div>}
 
-      <div style={{ overflowX:"auto", border:"1px solid #1b2340", borderRadius:14 }}>
+      <div style={{ overflowX:"auto", border:"1px solid #cbd5a7", borderRadius:14 }}>
         <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, ${colW}px)`, gap:8, minWidth:minW, fontSize:13 }}>
           {columns.map((h) => <Header key={h}>{h}</Header>)}
 
@@ -114,17 +122,17 @@ export default function Page() {
               <Cell i={i}>{bytesToGB(r.pckdatabyte)}</Cell>
               <Cell i={i}>{bytesToGB(r.useddatabyte)}</Cell>
 
-              {/* totals since 2025-06-01 */}
+              {/* costs/usage */}
+              <Cell i={i}>{money(r.subscriberOneTimeCost)}</Cell>
               <Cell i={i}>{bytesToGB(r.totalBytesSinceJun1)}</Cell>
-              <Cell i={i}>{money(r.subscriberCostSinceJun1)}</Cell>
               <Cell i={i}>{money(r.resellerCostSinceJun1)}</Cell>
             </>
           ))}
         </div>
       </div>
 
-      <p style={{ opacity:.7, marginTop:10, fontSize:12 }}>
-        Usage & costs aggregated from <b>2025-06-01</b> to today (one-week API windows). Dates shown without “T”.
+      <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
+        Subscriber Cost = one-time price from the active package. Usage & reseller cost aggregated from <b>2025-06-01</b> to today (weekly API windows).
       </p>
     </main>
   );
