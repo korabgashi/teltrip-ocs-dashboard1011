@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 // safe fetch
 async function safeFetch(url) {
@@ -21,7 +22,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // Columns (one-time Subscriber Cost from package; totals keep reseller only)
+  // Columns (includes one-time Subscriber Cost from package; totals keep reseller only)
   const columns = [
     "ICCID","IMSI","phoneNumber","subscriberStatus","simStatus","esim","activationCode",
     "activationDate","lastUsageDate","prepaid","balance","account","reseller","lastMcc","lastMnc",
@@ -54,8 +55,67 @@ export default function Page() {
   }
   useEffect(() => { load(); }, []);
 
+  // Export helpers
+  function exportCSV() {
+    const headers = [...columns];
+    const lines = [headers.join(",")];
+    filtered.forEach(r => {
+      lines.push([
+        r.iccid ?? "", r.imsi ?? "", r.phoneNumber ?? "", r.subscriberStatus ?? "", r.simStatus ?? "", String(r.esim ?? ""),
+        r.activationCode ?? "", fmtDT(r.activationDate), fmtDT(r.lastUsageDate), String(r.prepaid ?? ""), r.balance ?? "",
+        r.account ?? "", r.reseller ?? "", r.lastMcc ?? "", r.lastMnc ?? "",
+        r.prepaidpackagetemplatename ?? "", r.prepaidpackagetemplateid ?? "", fmtDT(r.tsactivationutc), fmtDT(r.tsexpirationutc),
+        r.pckdatabyte ?? "", r.useddatabyte ?? "", bytesToGB(r.pckdatabyte), bytesToGB(r.useddatabyte),
+        money(r.subscriberOneTimeCost), bytesToGB(r.totalBytesSinceJun1), money(r.resellerCostSinceJun1)
+      ].map(x => `"${String(x).replace(/"/g, '""')}"`).join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportExcel() {
+    // build a flat array of objects for XLSX
+    const data = filtered.map(r => ({
+      ICCID: r.iccid ?? "",
+      IMSI: r.imsi ?? "",
+      phoneNumber: r.phoneNumber ?? "",
+      subscriberStatus: r.subscriberStatus ?? "",
+      simStatus: r.simStatus ?? "",
+      esim: String(r.esim ?? ""),
+      activationCode: r.activationCode ?? "",
+      activationDate: fmtDT(r.activationDate),
+      lastUsageDate: fmtDT(r.lastUsageDate),
+      prepaid: String(r.prepaid ?? ""),
+      balance: r.balance ?? "",
+      account: r.account ?? "",
+      reseller: r.reseller ?? "",
+      lastMcc: r.lastMcc ?? "",
+      lastMnc: r.lastMnc ?? "",
+      prepaidpackagetemplatename: r.prepaidpackagetemplatename ?? "",
+      prepaidpackagetemplateid: r.prepaidpackagetemplateid ?? "",
+      tsactivationutc: fmtDT(r.tsactivationutc),
+      tsexpirationutc: fmtDT(r.tsexpirationutc),
+      pckdatabyte: r.pckdatabyte ?? "",
+      useddatabyte: r.useddatabyte ?? "",
+      "pckdata(GB)": bytesToGB(r.pckdatabyte),
+      "used(GB)": bytesToGB(r.useddatabyte),
+      subscriberOneTimeCost: money(r.subscriberOneTimeCost),
+      "usageSinceJun1(GB)": bytesToGB(r.totalBytesSinceJun1),
+      resellerCostSinceJun1: money(r.resellerCostSinceJun1)
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Teltrip");
+    XLSX.writeFile(wb, `teltrip_dashboard_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+
   const Header = ({children}) => (
-    <div style={{ padding:"10px 12px", background:"#e5edc2", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" }}>{children}</div>
+    <div style={{ padding:"10px 12px", background:"#eaf6c9", borderBottom:"1px solid #cbd5a7", fontWeight:600, color:"#000" }}>{children}</div>
   );
   const Cell = ({children, i}) => (
     <div style={{
@@ -68,26 +128,55 @@ export default function Page() {
   );
 
   return (
-    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto", background:"#eff4db", color:"#000" }}>
-      {/* Logo (optional; place /public/logo.png) */}
+    <main style={{ padding: 24, maxWidth: 1800, margin: "0 auto" }}>
+      {/* Centered logo (place your image at /public/logo.png) */}
       <div style={{ display:"flex", justifyContent:"center", marginBottom: 12 }}>
-        <img src="/logo.png" alt="Teltrip" style={{ height: 56 }} />
+        <img src="/logo.png" alt="Teltrip" style={{ height: 64 }} />
       </div>
 
-      <header style={{ display:"grid", gridTemplateColumns:"auto auto auto 1fr 260px", gap:12, alignItems:"center", marginBottom:14 }}>
+      <header style={{ display:"grid", gridTemplateColumns:"auto auto auto 1fr 360px", gap:12, alignItems:"center", marginBottom:14 }}>
         <h1 style={{ margin:0, color:"#000" }}>Teltrip Dashboard</h1>
-        <input value={accountId} onChange={e=>setAccountId(e.target.value)} placeholder="Account ID"
-               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}/>
-        <button onClick={load} disabled={loading}
-                style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#d9e8a6", color:"#000", cursor:"pointer" }}>
+        <input
+          value={accountId}
+          onChange={e=>setAccountId(e.target.value)}
+          placeholder="Account ID"
+          style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:180 }}
+        />
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#cfeaa1", color:"#000", cursor:"pointer" }}
+        >
           {loading ? "Loading…" : "Load"}
         </button>
-        <div/>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…"
-               style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:260 }}/>
+        <div />
+        <div style={{ display:"flex", gap:8, justifySelf:"end" }}>
+          <button
+            onClick={exportCSV}
+            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", color:"#000", cursor:"pointer" }}
+          >
+            Export CSV
+          </button>
+          <button
+            onClick={exportExcel}
+            style={{ padding:"8px 14px", borderRadius:10, border:"1px solid #cbd5a7", background:"#bfe080", color:"#000", cursor:"pointer" }}
+          >
+            Export Excel
+          </button>
+          <input
+            value={q}
+            onChange={e=>setQ(e.target.value)}
+            placeholder="Search…"
+            style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#fff", color:"#000", width:260 }}
+          />
+        </div>
       </header>
 
-      {err && <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>{err}</div>}
+      {err && (
+        <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>
+          {err}
+        </div>
+      )}
 
       <div style={{ overflowX:"auto", border:"1px solid #cbd5a7", borderRadius:14 }}>
         <div style={{ display:"grid", gridTemplateColumns:`repeat(${columns.length}, ${colW}px)`, gap:8, minWidth:minW, fontSize:13 }}>
@@ -132,7 +221,7 @@ export default function Page() {
       </div>
 
       <p style={{ opacity:.7, marginTop:10, fontSize:12, color:"#000" }}>
-        Subscriber Cost = one-time price from the active package. Usage & reseller cost aggregated from <b>2025-06-01</b> to today (weekly API windows).
+        Light theme, centered logo. Export to CSV/Excel. Usage & reseller cost aggregated from <b>2025-06-01</b> to today.
       </p>
     </main>
   );
