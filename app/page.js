@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
+<button
+  onClick={async ()=>{
+    await fetch("/api/logout", { method:"POST" });
+    window.location.href = "/login";
+  }}
+  style={{ padding:"8px 12px", borderRadius:10, border:"1px solid #cbd5a7", background:"#e6f3c2", cursor:"pointer" }}
+>
+  Logout
+</button>
+
 // safe fetch
 async function safeFetch(url) {
   const res = await fetch(url, { cache: "no-store" });
