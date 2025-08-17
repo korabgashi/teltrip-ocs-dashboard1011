@@ -1,28 +1,35 @@
 // app/login/page.js
 "use client";
-import { useState } from "react";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const sp = useSearchParams();                 // now inside Suspense
   const from = sp.get("from") || "/";
 
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [err, setErr] = useState("");
 
-  async function submit(e) {
+  const submit = async (e) => {
     e.preventDefault();
     setErr("");
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: u, password: p }),
+      cache: "no-store",
     });
     if (res.ok) router.replace(from);
-    else setErr((await res.json().catch(()=>({})))?.error || "Invalid credentials");
-  }
+    else {
+      const data = await res.json().catch(() => ({}));
+      setErr(data?.error || "Invalid credentials");
+    }
+  };
 
   return (
     <div style={{minHeight:"100svh",display:"grid",placeItems:"center",background:"#0b1020",color:"#e9eef9",fontFamily:"system-ui"}}>
@@ -40,5 +47,13 @@ export default function LoginPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{color:"#e9eef9",textAlign:"center",padding:40}}>Loading…</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
