@@ -9,11 +9,9 @@ export async function POST(req) {
 
   if (username === USER && password === PASS) {
     cookies().set("session", "ok", {
-      httpOnly: true,
-      sameSite: "lax",
+      httpOnly: true, sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60, // 1 hour
+      path: "/", maxAge: 60 * 60, // 1h
     });
     return NextResponse.json({ ok: true });
   }
