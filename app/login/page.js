@@ -1,23 +1,49 @@
+// app/login/page.js
 "use client";
-import { useEffect, useState } from "react";
-export default function Page(){
-  const [rows,setRows] = useState([]);
-  const [accountId,setAccountId] = useState("3432");
-  const [error,setError] = useState("");
-  async function load(){
-    try{
-      const r = await fetch(`/api/fetch-data?accountId=${accountId}`);
-      const j = await r.json();
-      if(!j.ok) throw new Error(j.error);
-      setRows(j.data||[]);
-    }catch(e){setError(e.message)}
-  }
-  useEffect(()=>{load()},[]);
-  return <main style={{padding:20}}>
-    <h1>Teltrip Dashboard</h1>
-    <input value={accountId} onChange={e=>setAccountId(e.target.value)}/>
-    <button onClick={load}>Load</button>
-    {error && <div style={{color:"red"}}>{error}</div>}
-    <pre>{JSON.stringify(rows,null,2)}</pre>
-  </main>
+
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const from = sp.get("from") || "/";
+
+  const [u, setU] = useState("");
+  const [p, setP] = useState("");
+  const [err, setErr] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    if (res.ok) {
+      router.replace(from);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setErr(data?.error || "Invalid credentials");
+    }
+  };
+
+  return (
+    <div style={{minHeight:"100svh",display:"grid",placeItems:"center",background:"#0b1020",color:"#e9eef9",fontFamily:"system-ui"}}>
+      <form onSubmit={submit} style={{width:360,padding:24,background:"#121a36",borderRadius:16,boxShadow:"0 10px 30px rgba(0,0,0,.3)"}}>
+        <h1 style={{margin:0,marginBottom:16,fontSize:24}}>Sign in</h1>
+        <label style={{display:"block",fontSize:14,marginBottom:6}}>Username</label>
+        <input value={u} onChange={e=>setU(e.target.value)} required
+          style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #2b3764",background:"#0e1430",color:"#e9eef9",marginBottom:12}} />
+        <label style={{display:"block",fontSize:14,marginBottom:6}}>Password</label>
+        <input type="password" value={p} onChange={e=>setP(e.target.value)} required
+          style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #2b3764",background:"#0e1430",color:"#e9eef9",marginBottom:16}} />
+        {err && <div style={{color:"#ff6b6b",fontSize:13,marginBottom:12}}>{err}</div>}
+        <button type="submit" style={{width:"100%",padding:12,borderRadius:10,border:"none",background:"#3b82f6",color:"#fff",fontWeight:600,cursor:"pointer"}}>
+          Login
+        </button>
+      </form>
+    </div>
+  );
 }
