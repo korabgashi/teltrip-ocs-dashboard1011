@@ -1,16 +1,9 @@
 // app/login/page.js
 "use client";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-import React, { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 
-function LoginForm() {
-  const router = useRouter();
-  const sp = useSearchParams();                 // now inside Suspense
-  const from = sp.get("from") || "/";
-
+export default function LoginPage() {
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [err, setErr] = useState("");
@@ -24,8 +17,9 @@ function LoginForm() {
       body: JSON.stringify({ username: u, password: p }),
       cache: "no-store",
     });
-    if (res.ok) router.replace(from);
-    else {
+    if (res.ok) {
+      window.location.href = "/";   // go to dashboard
+    } else {
       const data = await res.json().catch(() => ({}));
       setErr(data?.error || "Invalid credentials");
     }
@@ -47,13 +41,5 @@ function LoginForm() {
         </button>
       </form>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{color:"#e9eef9",textAlign:"center",padding:40}}>Loading…</div>}>
-      <LoginForm />
-    </Suspense>
   );
 }
