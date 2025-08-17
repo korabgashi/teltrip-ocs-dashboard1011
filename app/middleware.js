@@ -1,38 +1,44 @@
 import { NextResponse } from "next/server";
 
-// Runs on the Edge runtime (no Node 'Buffer'); use Web API 'atob'
-function parseBasicAuth(header) {
-  if (!header) return null;
-  const [scheme, encoded] = header.split(" ");
-  if (scheme !== "Basic" || !encoded) return null;
-  try {
-    const decoded = atob(encoded); // "user:pass"
-    const idx = decoded.indexOf(":");
-    if (idx === -1) return null;
-    return { user: decoded.slice(0, idx), pass: decoded.slice(idx + 1) };
-  } catch {
-    return null;
-  }
+// Stateless cookie check (no DB): token = sha256(user:pass:secret)
+async function expectedToken() {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${process.env.DASHBOARD_USER}:${process.env.DASHBOARD_PASS}:${process.env.SESSION_SECRET}`);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Buffer.from(new Uint8Array(hash)).toString("hex");
 }
 
-export function middleware(req) {
-  const { DASHBOARD_USER, DASHBOARD_PASS } = process.env;
-  const auth = parseBasicAuth(req.headers.get("authorization"));
+const ALLOW = [
+  "/login",
+  "/api/login",
+  "/_next/static",
+  "/_next/image",
+  "/favicon.ico",
+  "/logo.png",
+];
 
-  if (auth && auth.user === DASHBOARD_USER && auth.pass === DASHBOARD_PASS) {
+export async function middleware(req) {
+  const { pathname } = req.nextUrl;
+
+  // allow public paths
+  if (ALLOW.some(p => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  return new NextResponse("Auth required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Teltrip Dashboard"' },
-  });
+  const cookie = req.cookies.get("teltrip_auth")?.value || "";
+  const good = await expectedToken();
+
+  if (cookie === good) {
+    return NextResponse.next();
+  }
+
+  // not authenticated → redirect to /login
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.searchParams.set("next", pathname);
+  return NextResponse.redirect(url);
 }
 
-// Protect everything except Next static assets & favicons
 export const config = {
-  matcher: [
-    // block all routes except _next static/image and common public assets
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!.*\\.).*)"], // all routes except direct file requests
 };
