@@ -17,9 +17,8 @@ export default function LoginPage() {
       body: JSON.stringify({ username: u, password: p }),
       cache: "no-store",
     });
-    if (res.ok) {
-      window.location.href = "/";   // go to dashboard
-    } else {
+    if (res.ok) window.location.href = "/";
+    else {
       const data = await res.json().catch(() => ({}));
       setErr(data?.error || "Invalid credentials");
     }
