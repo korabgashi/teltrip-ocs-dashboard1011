@@ -5,7 +5,7 @@ export function middleware(req) {
   const { pathname } = req.nextUrl;
   const session = req.cookies.get("session")?.value;
 
-  // allow Next internals & static
+  // Allow Next internals & static
   if (
     pathname.startsWith("/_next/") || pathname.startsWith("/public/") ||
     /\.(ico|png|jpg|jpeg|svg|webp|css|js|woff2?)$/.test(pathname)
@@ -24,11 +24,9 @@ export function middleware(req) {
   }
 
   if (!session) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    const url = req.nextUrl.clone(); url.pathname = "/login";
     return NextResponse.redirect(url);
   }
-
   return NextResponse.next();
 }
 export const config = { matcher: ["/((?!_next/static|_next/image).*)"] };
