@@ -1,44 +1,56 @@
+// middleware.js
 import { NextResponse } from "next/server";
 
-// Stateless cookie check (no DB): token = sha256(user:pass:secret)
-async function expectedToken() {
-  const enc = new TextEncoder();
-  const data = enc.encode(`${process.env.DASHBOARD_USER}:${process.env.DASHBOARD_PASS}:${process.env.SESSION_SECRET}`);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Buffer.from(new Uint8Array(hash)).toString("hex");
+function unauthorized(realm = "Protected") {
+  return new NextResponse("Authentication required.", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": `Basic realm="${realm}", charset="UTF-8"`,
+    },
+  });
 }
 
-const ALLOW = [
-  "/login",
-  "/api/login",
-  "/_next/static",
-  "/_next/image",
-  "/favicon.ico",
-  "/logo.png",
-];
-
-export async function middleware(req) {
+export function middleware(req) {
   const { pathname } = req.nextUrl;
 
-  // allow public paths
-  if (ALLOW.some(p => pathname.startsWith(p))) {
+  // Allow Next internals and static assets without auth
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/public/") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".svg")
+  ) {
     return NextResponse.next();
   }
 
-  const cookie = req.cookies.get("teltrip_auth")?.value || "";
-  const good = await expectedToken();
-
-  if (cookie === good) {
-    return NextResponse.next();
+  // Read HTTP Basic Auth header
+  const auth = req.headers.get("authorization");
+  if (!auth || !auth.startsWith("Basic ")) {
+    return unauthorized("OCS Dashboard");
   }
 
-  // not authenticated → redirect to /login
-  const url = req.nextUrl.clone();
-  url.pathname = "/login";
-  url.searchParams.set("next", pathname);
-  return NextResponse.redirect(url);
+  // Decode "Basic base64(user:pass)"
+  try {
+    const encoded = auth.split(" ")[1];
+    const [user, pass] = Buffer.from(encoded, "base64").toString().split(":");
+
+    const USER = process.env.LOGIN_USER || "admin";
+    const PASS = process.env.LOGIN_PASS || "Teltrip#2025";
+
+    if (user !== USER || pass !== PASS) {
+      return unauthorized("OCS Dashboard");
+    }
+  } catch (_e) {
+    return unauthorized("OCS Dashboard");
+  }
+
+  // Auth OK → continue
+  return NextResponse.next();
 }
 
+// Protect everything except Next image/static
 export const config = {
-  matcher: ["/((?!.*\\.).*)"], // all routes except direct file requests
+  matcher: ["/((?!_next/static|_next/image).*)"],
 };
