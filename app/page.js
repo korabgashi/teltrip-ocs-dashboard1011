@@ -239,7 +239,7 @@ export default function Page() {
       </header>
 
       {err && (
-        <div style={{ background:"#ffefef", border:"1px solid #e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>
+        <div style={{ background:"#ffefef", border:"1px solid "#e5a5a5", color:"#900", padding:"10px 12px", borderRadius:10, marginBottom:12, whiteSpace:"pre-wrap", fontSize:12 }}>
           {err}
         </div>
       )}
